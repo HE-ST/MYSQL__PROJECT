@@ -4,10 +4,10 @@ select *
 from layoffs;
 -- 1. Remove Duplicate data
 -- 2. Standardize the data
--- 3. Null Values or Blank Values
+-- 3. Removing Null Values or Blank Values
 -- 4. Remove any Columns 
 
--- FIrst We Create a Copy of ROW data
+-- Removeing Dulicate Data 
 
 CREATE TABLE layoffs_staging
 like layoffs;
@@ -108,7 +108,7 @@ from  layoffs_staging2;
 Alter table layoffs_staging2
 modify column `date` DATE;
 
-
+-- Removing Null and Blank columns
 
 select *
 from layoffs_staging2
