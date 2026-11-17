@@ -1,13 +1,60 @@
--- Data cleaning
+-- Data cleanning
 
-select *
-from layoffs;
--- 1. Remove Duplicate data
--- 2. Standardize the data
--- 3. Removing Null Values or Blank Values
--- 4. Remove any Columns 
 
--- Removeing Dulicate Data 
+
+-- 1. Check original dataset
+
+SELECT *
+FROM layoffs;
+
+-- 2. Check table structure
+
+DESCRIBE layoffs;
+
+-- 3. Check total records
+
+SELECT COUNT(*) AS total_records
+FROM layoffs;
+
+-- 4. Check missing values
+
+SELECT
+    SUM(company IS NULL OR TRIM(company) = '') AS missing_company,
+    SUM(industry IS NULL OR TRIM(industry) = '') AS missing_industry,
+    SUM(total_laid_off IS NULL) AS missing_total_laid_off,
+    SUM(percentage_laid_off IS NULL) AS missing_percentage,
+    SUM(`date` IS NULL OR TRIM(`date`) = '') AS missing_date,
+    SUM(country IS NULL OR TRIM(country) = '') AS missing_country
+FROM layoffs;
+
+-- 5. Check duplicate count
+
+SELECT COUNT(*) AS duplicate_groups
+FROM (
+    SELECT
+        company,
+        location,
+        industry,
+        total_laid_off,
+        percentage_laid_off,
+        `date`,
+        stage,
+        country,
+        funds_raised_millions
+    FROM layoffs
+    GROUP BY
+        company,
+        location,
+        industry,
+        total_laid_off,
+        percentage_laid_off,
+        `date`,
+        stage,
+        country,
+        funds_raised_millions
+    HAVING COUNT(*) > 1
+) AS duplicates;
+-- FIrst We Create a Copy of ROW data
 
 CREATE TABLE layoffs_staging
 like layoffs;
@@ -99,6 +146,12 @@ select `date`,
 str_to_date(`date`, '%m/%d/%Y')
 from layoffs_staging2;
 
+SELECT `date`
+FROM layoffs_staging2
+WHERE `date` IS NOT NULL
+  AND STR_TO_DATE(`date`, '%m/%d/%Y') IS NULL;
+
+
 update layoffs_staging2
 set `date` = str_to_date(`date`, '%m/%d/%Y');
 
@@ -108,51 +161,117 @@ from  layoffs_staging2;
 Alter table layoffs_staging2
 modify column `date` DATE;
 
--- Removing Null and Blank columns
-
-select *
-from layoffs_staging2
-where total_laid_off is null and percentage_laid_off is null;
-
-Select *
-from layoffs_staging2
-where industry is null
-or industry = '';
-
-select *
-from layoffs_staging2
-where company = 'Airbnb';
-
-select  t1.industry, t2.industry 
-from layoffs_staging2 t1
-join layoffs_staging2 t2
-on t1.company = t2.company 
-where t1.industry is null or t1.industry = ''
- and t2.industry is not null;
- 
- update  layoffs_staging2 t1
- join layoffs_staging2 t2
-on t1.company = t2.company 
-set t1.industry = t2.industry
-where t1.industry is null 
- and t2.industry is not null;
- 
- update layoffs_staging2
- set industry = null
- where industry = '';
- 
- delete
-from layoffs_staging2
-where total_laid_off is null and percentage_laid_off is null;
-
-select *
-from layoffs_staging2;
-
-alter table layoffs_staging2
-drop column row_num;
 
 
+-- =========================================
+-- 3. HANDLE NULL AND BLANK VALUES
+-- =========================================
+
+-- Step 1: Check rows with missing layoff information
+
+SELECT *
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+  AND percentage_laid_off IS NULL;
 
 
+-- Step 2: Check Airbnb records
 
+SELECT *
+FROM layoffs_staging2
+WHERE company = 'Airbnb';
+
+
+-- Step 3: Convert blank industry values into NULL
+
+UPDATE layoffs_staging2
+SET industry = NULL
+WHERE TRIM(industry) = '';
+
+
+-- Step 4: Check missing industry values
+
+SELECT *
+FROM layoffs_staging2
+WHERE industry IS NULL;
+
+
+-- Step 5: Find available industry values from same company
+
+SELECT
+    t1.company,
+    t1.industry AS missing_industry,
+    t2.industry AS available_industry
+FROM layoffs_staging2 t1
+JOIN layoffs_staging2 t2
+    ON t1.company = t2.company
+WHERE t1.industry IS NULL
+  AND t2.industry IS NOT NULL;
+
+
+-- Step 6: Fill missing industry values safely
+
+UPDATE layoffs_staging2 t1
+JOIN (
+    SELECT
+        company,
+        MAX(industry) AS industry
+    FROM layoffs_staging2
+    WHERE industry IS NOT NULL
+      AND industry <> ''
+    GROUP BY company
+    HAVING COUNT(DISTINCT industry) = 1
+) t2
+    ON t1.company = t2.company
+SET t1.industry = t2.industry
+WHERE t1.industry IS NULL;
+
+
+-- Step 7: Remove rows with no layoff information
+
+DELETE FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+  AND percentage_laid_off IS NULL;
+
+
+-- Step 8: Final check
+
+SELECT *
+FROM layoffs_staging2;
+
+
+-- Step 9: Remove temporary column
+
+ALTER TABLE layoffs_staging2
+DROP COLUMN row_num;
+
+-- =========================================
+-- FINAL DATA VERIFICATION
+-- =========================================
+
+-- 1. View cleaned dataset
+
+SELECT *
+FROM layoffs_staging2;
+
+-- 2. Check final total records
+
+SELECT COUNT(*) AS final_total_records
+FROM layoffs_staging2;
+
+-- 3. Check missing company and industry
+
+SELECT *
+FROM layoffs_staging2
+WHERE company IS NULL
+   OR TRIM(company) = ''
+   OR industry IS NULL
+   OR TRIM(industry) = '';
+
+-- 4. Check rows without layoff information
+
+SELECT *
+FROM layoffs_staging2
+WHERE total_laid_off IS NULL
+  AND percentage_laid_off IS NULL;
 
